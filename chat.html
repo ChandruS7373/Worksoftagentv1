@@ -1,0 +1,358 @@
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Support Assistant – Chat</title>
+  <link rel="stylesheet" href="/style.css"/>
+  <style>
+    /* ── ESCALATION POPUP ─────────────────────────────────── */
+    .esc-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.45);
+      z-index: 99999;
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .esc-popup {
+      background: #f4f5f7;
+      border-radius: 16px;
+      width: 100%; max-width: 780px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 24px 80px rgba(0,0,0,.28);
+      animation: popIn .22s ease;
+    }
+    @keyframes popIn {
+      from { transform: scale(.95); opacity: 0; }
+      to   { transform: scale(1);   opacity: 1; }
+    }
+
+    /* header card */
+    .esc-header-card {
+      background: #fff;
+      border-radius: 14px;
+      margin: 18px 18px 0;
+      padding: 28px 32px 24px;
+      text-align: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,.06);
+    }
+    .esc-header-icon { font-size: 32px; margin-bottom: 10px; }
+    .esc-header-title {
+      font-size: 20px; font-weight: 800; color: #111827; margin-bottom: 8px;
+    }
+    .esc-header-sub {
+      font-size: 13px; color: #6b7280; line-height: 1.6;
+    }
+
+    /* back button row */
+    .esc-back-row {
+      padding: 14px 18px 6px;
+    }
+    .esc-back-btn {
+      background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+      padding: 7px 16px; font-size: 13px; color: #374151; cursor: pointer;
+      font-weight: 500; transition: background .15s;
+    }
+    .esc-back-btn:hover { background: #f3f4f6; }
+
+    /* form card */
+    .esc-form-card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      margin: 0 18px 18px;
+      padding: 24px 28px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.04);
+    }
+    .esc-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px;
+    }
+    .esc-field { display: flex; flex-direction: column; gap: 6px; }
+    .esc-field label {
+      font-size: 13px; font-weight: 500; color: #374151;
+    }
+    .esc-field input,
+    .esc-field textarea,
+    .esc-field select {
+      padding: 10px 14px;
+      border: 1.5px solid #e5e7eb;
+      border-radius: 10px;
+      font-size: 13.5px;
+      color: #111827;
+      background: #f9fafb;
+      outline: none;
+      font-family: inherit;
+      transition: border-color .2s, box-shadow .2s;
+      width: 100%;
+    }
+    .esc-field input:focus,
+    .esc-field textarea:focus,
+    .esc-field select:focus {
+      border-color: #534AB7;
+      box-shadow: 0 0 0 3px rgba(83,74,183,.12);
+      background: #fff;
+    }
+    .esc-field textarea { resize: vertical; min-height: 90px; }
+    .esc-field select { background: #f9fafb; }
+
+    /* submit button */
+    .esc-submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: #e53935;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .15s;
+      margin-top: 4px;
+      letter-spacing: .2px;
+    }
+    .esc-submit-btn:hover:not(:disabled) { background: #c62828; }
+    .esc-submit-btn:disabled { opacity: .7; cursor: not-allowed; }
+
+    /* ── TICKET RESULT POPUP ─────────────────────────────── */
+    .ticket-popup {
+      background: #fff;
+      border-radius: 16px;
+      width: 100%; max-width: 480px;
+      padding: 32px 36px;
+      box-shadow: 0 24px 80px rgba(0,0,0,.28);
+      animation: popIn .22s ease;
+      text-align: center;
+    }
+    .ticket-popup-id {
+      font-size: 10px; font-weight: 700; color: #534AB7;
+      letter-spacing: .6px; text-transform: uppercase; margin-bottom: 4px;
+    }
+    .ticket-popup-num {
+      font-size: 28px; font-weight: 900; color: #111827; margin-bottom: 16px;
+    }
+    .ticket-popup-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0; border-bottom: 1px solid #f3f4f6;
+      font-size: 13px;
+    }
+    .ticket-popup-row:last-of-type { border-bottom: none; }
+    .ticket-popup-lbl { color: #6b7280; }
+    .ticket-popup-val { color: #111827; font-weight: 600; }
+    .ticket-popup-btns {
+      display: flex; gap: 12px; margin-top: 20px; justify-content: center;
+    }
+
+    /* ── RESOLUTION POPUP ────────────────────────────────── */
+    .res-popup {
+      background: #fff;
+      border-radius: 16px;
+      width: 100%; max-width: 420px;
+      padding: 36px 40px;
+      text-align: center;
+      box-shadow: 0 24px 80px rgba(0,0,0,.28);
+      animation: popIn .22s ease;
+    }
+    .res-popup-icon  { font-size: 52px; margin-bottom: 14px; }
+    .res-popup-title { font-size: 19px; font-weight: 800; color: #111827; margin-bottom: 8px; }
+    .res-popup-body  { font-size: 13.5px; color: #6b7280; line-height: 1.65; margin-bottom: 24px; }
+    .res-popup-btns  { display: flex; flex-direction: column; gap: 10px; }
+
+    /* shared overlay buttons */
+    .btn-primary {
+      padding: 11px 24px; background: #534AB7; color: #fff;
+      border: none; border-radius: 10px; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: background .15s; width: 100%;
+    }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-secondary {
+      padding: 11px 24px; background: #f3f4f6; color: #374151;
+      border: 1px solid #e5e7eb; border-radius: 10px; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: background .15s; width: 100%;
+    }
+    .btn-secondary:hover { background: #e5e7eb; }
+    .btn-danger {
+      padding: 11px 24px; background: #e53935; color: #fff;
+      border: none; border-radius: 10px; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: background .15s; width: 100%;
+    }
+    .btn-danger:hover { background: #c62828; }
+
+    @media (max-width: 600px) {
+      .esc-row { grid-template-columns: 1fr; }
+      .esc-form-card { padding: 18px 16px; }
+      .esc-header-card { padding: 20px 16px; }
+    }
+  </style>
+</head>
+<body class="chat-body">
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="nb-left">
+      <div class="nb-logo">🤖</div>
+      <span class="nb-appname">AI Support Assistant</span>
+    </div>
+    <div class="nb-center">Support Portal</div>
+    <div class="nb-right">
+      <div class="nb-userinfo">
+        <div class="nb-username" id="navName">Alex Johnson</div>
+        <div class="nb-company"  id="navCompany">Acme Corp</div>
+      </div>
+      <div class="nb-avatar" id="navAvatar">AJ</div>
+      <div class="nb-dots">···</div>
+    </div>
+  </nav>
+
+  <!-- CHAT SCROLL AREA -->
+  <div class="chat-scroll" id="chatScroll">
+    <div class="chat-inner" id="chatInner">
+      <div class="date-stamp" id="dateStamp"></div>
+    </div>
+  </div>
+
+  <!-- UPLOAD ZONE -->
+  <div class="upload-zone" id="uploadZone" style="display:none">
+    <div class="uc-card">
+      <div class="uc-icon">⬆️</div>
+      <div class="uc-text">
+        <div class="uc-title">Upload screenshot or error log</div>
+        <div class="uc-sub">Drag &amp; drop, or click to browse — PNG, JPG, PDF, TXT</div>
+      </div>
+      <label class="uc-browse-btn" for="fileInput"><span>🗂</span> Browse</label>
+      <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.pdf,.txt,.log" style="display:none"/>
+    </div>
+    <div id="filePreview" class="file-preview"></div>
+    <div id="analyzeRow" class="analyze-row" style="display:none">
+      <button class="btn-analyze" id="analyzeBtn">🔍 Analyze File</button>
+    </div>
+  </div>
+
+  <!-- FEEDBACK BAR -->
+  <div class="feedback-bar" id="feedbackBar" style="display:none">
+    <div class="fb-card">
+      <span class="fb-text">Did this resolve your issue?</span>
+      <button class="btn-fb" id="btnResolved">✅ Resolved</button>
+      <button class="btn-fb" id="btnNotResolved">❌ Not Resolved</button>
+    </div>
+  </div>
+
+  <!-- INPUT BAR -->
+  <div class="inputbar" id="inputBar">
+    <div class="inputbar-inner">
+      <div class="composer" id="composerBox">
+        <input type="text" id="msgInput" class="msg-input" placeholder="Ask Anything..." autocomplete="off"/>
+        <button class="send-btn" id="sendBtn">↑</button>
+      </div>
+      <div class="inputbar-hint" id="hintRow">
+        Press Enter to send
+        <button class="btn-toggle-upload" id="toggleUploadBtn" style="display:none">Hide upload panel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       RESOLUTION POPUP — "Did this resolve your issue?"
+  ════════════════════════════════════════════════════════ -->
+  <div class="esc-overlay" id="resOverlay" style="display:none">
+    <div class="res-popup">
+      <div class="res-popup-icon"  id="resIcon">🔍</div>
+      <div class="res-popup-title" id="resTitle">Can we close this at L1?</div>
+      <div class="res-popup-body"  id="resBody">
+        It looks like your issue may be sorted. Confirm below — or keep chatting if you still need help.
+      </div>
+      <div class="res-popup-btns" id="resBtns"></div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       ESCALATION POPUP — matches the screenshot exactly
+  ════════════════════════════════════════════════════════ -->
+  <div class="esc-overlay" id="escOverlay" style="display:none">
+    <div class="esc-popup">
+
+      <!-- top white card: icon + title + subtitle -->
+      <div class="esc-header-card">
+        <div class="esc-header-icon">🔺</div>
+        <div class="esc-header-title">Forwarding to L2 Support</div>
+        <div class="esc-header-sub">
+          A Salesforce case will be raised and the L2 team notified.<br>
+          Add your contact details to receive email updates.
+        </div>
+      </div>
+
+      <!-- back button -->
+      <div class="esc-back-row">
+        <button class="esc-back-btn" id="escBackBtn">← Back to Chat</button>
+      </div>
+
+      <!-- form card -->
+      <div class="esc-form-card">
+        <div class="esc-row">
+          <div class="esc-field">
+            <label for="escName">Your Name <span style="color:#9ca3af;font-weight:400;">(optional)</span></label>
+            <input id="escName" type="text" placeholder="e.g. Aravind R"/>
+          </div>
+          <div class="esc-field">
+            <label for="escEmail">Your Email <span style="color:#9ca3af;font-weight:400;">(optional)</span></label>
+            <input id="escEmail" type="email" placeholder="you@qualesce.com"/>
+          </div>
+        </div>
+
+        <div class="esc-field" style="margin-bottom:18px;">
+          <label for="escExtra">Additional details <span style="color:#9ca3af;font-weight:400;">(optional)</span></label>
+          <textarea id="escExtra" placeholder="Error code, business impact, steps already tried…"></textarea>
+        </div>
+
+        <div class="esc-field" style="margin-bottom:20px;">
+          <label for="escPriority">Priority</label>
+          <select id="escPriority">
+            <option value="High">High</option>
+            <option value="Critical">Critical</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+        </div>
+
+        <button class="esc-submit-btn" id="escSubmitBtn">
+          🚀 Raise Ticket &amp; Notify IT Admin
+        </button>
+        <div id="escErrMsg" style="margin-top:10px;font-size:12px;color:#ef4444;text-align:center;"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       TICKET RESULT POPUP — shown after ticket is raised
+  ════════════════════════════════════════════════════════ -->
+  <div class="esc-overlay" id="ticketOverlay" style="display:none">
+    <div class="ticket-popup">
+      <div id="ticketContent"></div>
+      <div class="ticket-popup-btns">
+        <button class="btn-primary"   id="ticketNewChat">🆕 New Chat</button>
+        <button class="btn-secondary" id="ticketBackChat">💬 Back to Chat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       RESOLVED MODAL
+  ════════════════════════════════════════════════════════ -->
+  <div class="esc-overlay" id="resolvedOverlay" style="display:none">
+    <div class="res-popup">
+      <div class="res-popup-icon">🎉</div>
+      <div class="res-popup-title">Issue Resolved!</div>
+      <div class="res-popup-body">Glad we could help. Your issue has been marked as resolved. Have a great day!</div>
+      <div class="res-popup-btns">
+        <button class="btn-primary" id="resolvedCloseBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/chat.js"></script>
+</body>
+</html>

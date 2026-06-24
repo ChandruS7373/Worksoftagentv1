@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Support Assistant</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body class="ob-body">
+
+  <div class="ob-page">
+    <div class="ob-card">
+      <div class="ob-logo">🤖</div>
+      <h1 class="ob-title">AI Support Assistant</h1>
+      <p class="ob-sub">Please provide your details to continue</p>
+
+      <form id="onboardForm" novalidate>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="name">Name <span class="req">*</span></label>
+            <input type="text" id="name" placeholder="Alex Johnson" autocomplete="off" />
+            <span class="err-msg" id="nameErr"></span>
+          </div>
+          <div class="form-group">
+            <label for="email">Corporate Email <span class="req">*</span></label>
+            <input type="email" id="email" placeholder="alex@acme.com" autocomplete="off" />
+            <span class="err-msg" id="emailErr"></span>
+          </div>
+        </div>
+
+        <div class="form-group full">
+          <label for="company">Company Name <span class="req">*</span></label>
+          <input type="text" id="company" placeholder="Acme Corp" autocomplete="off" />
+          <span class="err-msg" id="companyErr"></span>
+        </div>
+
+        <button type="submit" class="btn-continue" id="submitBtn">Continue →</button>
+        <div class="err-msg" id="formErr" style="text-align:center;margin-top:8px;"></div>
+      </form>
+
+      <div style="margin-top:16px;border-top:1px solid #f3f4f6;padding-top:14px;text-align:center;">
+        <button type="button" class="btn-sync" id="syncBtn">🔄 Sync Salesforce Knowledge Base</button>
+        <div id="syncMsg" style="font-size:12px;margin-top:6px;color:#6b7280;"></div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .btn-sync {
+      background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;
+      color: #374151; font-size: 13px; font-weight: 500; padding: 8px 16px;
+      cursor: pointer; transition: background .15s;
+    }
+    .btn-sync:hover { background: #f3f4f6; }
+    .btn-sync:disabled { opacity: .6; cursor: not-allowed; }
+  </style>
+
+  <script>
+    const form    = document.getElementById('onboardForm');
+    const syncBtn = document.getElementById('syncBtn');
+    const syncMsg = document.getElementById('syncMsg');
+
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const name    = document.getElementById('name').value.trim();
+      const email   = document.getElementById('email').value.trim();
+      const company = document.getElementById('company').value.trim();
+      let valid = true;
+
+      document.getElementById('nameErr').textContent    = '';
+      document.getElementById('emailErr').textContent   = '';
+      document.getElementById('companyErr').textContent = '';
+      document.getElementById('formErr').textContent    = '';
+
+      if (!name) { document.getElementById('nameErr').textContent = 'Please enter your name.'; valid = false; }
+      if (!email || !email.includes('@')) { document.getElementById('emailErr').textContent = 'Please enter a valid corporate email.'; valid = false; }
+      if (!company) { document.getElementById('companyErr').textContent = 'Please enter your company name.'; valid = false; }
+      if (!valid) return;
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true; btn.textContent = 'Starting…';
+
+      try {
+        const res = await fetch('/api/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, company }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        // Pass welcome message via sessionStorage so chat.js can display it
+        sessionStorage.setItem('userName',    name);
+        sessionStorage.setItem('userEmail',   email);
+        sessionStorage.setItem('companyName', company);
+        sessionStorage.setItem('welcomeMsg',  data.welcome || '');
+        window.location.href = '/chat';
+      } catch (err) {
+        document.getElementById('formErr').textContent = 'Error: ' + err.message;
+        btn.disabled = false; btn.textContent = 'Continue →';
+      }
+    });
+
+    syncBtn.addEventListener('click', async () => {
+      syncBtn.disabled = true; syncBtn.textContent = '⏳ Syncing…';
+      syncMsg.textContent = '';
+      try {
+        const res  = await fetch('/api/sync', { method: 'POST' });
+        const data = await res.json();
+        syncMsg.textContent = (data.ok ? '✅ ' : '❌ ') + data.message;
+        syncMsg.style.color = data.ok ? '#16a34a' : '#dc2626';
+      } catch (err) {
+        syncMsg.textContent = '❌ ' + err.message;
+        syncMsg.style.color = '#dc2626';
+      } finally {
+        syncBtn.disabled = false; syncBtn.textContent = '🔄 Sync Salesforce Knowledge Base';
+      }
+    });
+  </script>
+</body>
+</html>

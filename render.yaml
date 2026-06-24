@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: worksoftagentv1
+    runtime: python
+    pythonVersion: "3.11.6"
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --worker-class gthread --workers 1 --threads 4 --timeout 120
+    envVars:
+      - key: FLASK_DEBUG
+        value: "0"
