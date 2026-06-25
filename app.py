@@ -66,16 +66,16 @@ OUTLOOK_PASSWORD  = _secret("OUTLOOK_PASSWORD")
 PORTAL_URL        = SF_INSTANCE_URL or f"https://{SF_DOMAIN}.salesforce.com"
 
 # ── Slack ─────────────────────────────────────────────────────────────────────
-SLACK_WEBHOOK_URL    = _secret("SLACK_WEBHOOK_URL")      # Incoming Webhook URL (optional)
-SLACK_BOT_TOKEN      = _secret("SLACK_BOT_TOKEN")        # Bot token (xoxb-...)
-SLACK_CHANNEL        = _secret("SLACK_CHANNEL", "#support-escalations")
-SLACK_SIGNING_SECRET = _secret("SLACK_SIGNING_SECRET")  # For verifying Slack payloads
+SLACK_WEBHOOK_URL    = _secret("SLACK_WEBHOOK_URL")
+SLACK_BOT_TOKEN      = _secret("SLACK_BOT_TOKEN")
+SLACK_CHANNEL        = _secret("SLACK_CHANNEL", "C0B9SK7EW64")
+SLACK_SIGNING_SECRET = _secret("SLACK_SIGNING_SECRET")
 
 # ── Confluence ────────────────────────────────────────────────────────────────
-CONFLUENCE_URL       = _secret("CONFLUENCE_URL")        # e.g. https://yourorg.atlassian.net
-CONFLUENCE_EMAIL     = _secret("CONFLUENCE_EMAIL")      # Atlassian account email
-CONFLUENCE_API_TOKEN = _secret("CONFLUENCE_API_TOKEN")  # API token from id.atlassian.com
-CONFLUENCE_SPACE_KEY = _secret("CONFLUENCE_SPACE_KEY")  # e.g. "WS" or "SUPP"
+CONFLUENCE_URL       = _secret("CONFLUENCE_URL",       "https://qualesce-team-kr41ncbl.atlassian.net")
+CONFLUENCE_EMAIL     = _secret("CONFLUENCE_EMAIL",     "aravind.r@qualesce.com")
+CONFLUENCE_API_TOKEN = _secret("CONFLUENCE_API_TOKEN")
+CONFLUENCE_SPACE_KEY = _secret("CONFLUENCE_SPACE_KEY", "IS")
 
 # ── AI model names — all overridable from .env ──────────────────────────────
 _GROQ_MODEL        = _secret("GROQ_MODEL",        "llama-3.1-8b-instant")
@@ -858,24 +858,30 @@ def send_slack_notification(ticket, user_name, user_email, issue_text, priority)
             )
             data = r.json()
             if data.get("ok"):
-                # Fetch permalink to the posted message
-                permalink = ""
+                ch  = data.get("channel", SLACK_CHANNEL)
+                ts  = data.get("ts", "")
+                # Fetch permalink; fall back to channel deep-link so popup always has a URL
+                permalink = f"https://slack.com/app_redirect?channel={ch}"
                 try:
                     pl = _req.get(
                         "https://slack.com/api/chat.getPermalink",
                         headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
-                        params={"channel": data["channel"], "message_ts": data["ts"]},
+                        params={"channel": ch, "message_ts": ts},
                         timeout=10,
                     )
-                    permalink = pl.json().get("permalink", "")
+                    permalink = pl.json().get("permalink", "") or permalink
                 except Exception:
                     pass
                 return True, f"Slack notified in {SLACK_CHANNEL}", permalink
-            return False, data.get("error", "Unknown Slack API error"), ""
+            return False, data.get("error", "Unknown Slack API error"), \
+                   f"https://slack.com/app_redirect?channel={SLACK_CHANNEL}"
         except Exception as exc:
             return False, str(exc), ""
 
-    return False, "Slack not configured (set SLACK_WEBHOOK_URL or SLACK_BOT_TOKEN + SLACK_CHANNEL)", ""
+    # No token — return a channel deep-link so the popup button still works
+    ch = SLACK_CHANNEL or ""
+    fallback = f"https://slack.com/app_redirect?channel={ch}" if ch else ""
+    return False, "Slack bot token not configured", fallback
 
 # ═══════════════════════════════════════════════════════════
 # FILE PROCESSING
