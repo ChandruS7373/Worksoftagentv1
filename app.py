@@ -1755,6 +1755,47 @@ def api_sync_confluence():
         log.error(f"Confluence sync error: {exc}")
         return jsonify({"ok": False, "message": str(exc)}), 500
 
+@app.route("/api/test-slack", methods=["GET"])
+def api_test_slack():
+    import requests as _req
+    result = {
+        "bot_token_set":  bool(SLACK_BOT_TOKEN),
+        "channel":        SLACK_CHANNEL,
+        "webhook_set":    bool(SLACK_WEBHOOK_URL),
+        "post_ok":        False,
+        "post_error":     "",
+        "permalink":      "",
+        "permalink_error":"",
+    }
+    if not SLACK_BOT_TOKEN:
+        return jsonify(result)
+    try:
+        r = _req.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
+            json={"channel": SLACK_CHANNEL, "text": ":white_check_mark: Render test from Worksoft Support"},
+            timeout=10,
+        )
+        d = r.json()
+        result["post_ok"]    = d.get("ok", False)
+        result["post_error"] = d.get("error", "") if not d.get("ok") else ""
+        if d.get("ok"):
+            try:
+                pl = _req.get(
+                    "https://slack.com/api/chat.getPermalink",
+                    headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
+                    params={"channel": d["channel"], "message_ts": d["ts"]},
+                    timeout=10,
+                )
+                pd = pl.json()
+                result["permalink"]       = pd.get("permalink", "")
+                result["permalink_error"] = pd.get("error", "") if not pd.get("ok") else ""
+            except Exception as exc:
+                result["permalink_error"] = str(exc)
+    except Exception as exc:
+        result["post_error"] = str(exc)
+    return jsonify(result)
+
 @app.route("/api/status", methods=["GET"])
 def api_status():
     try:
