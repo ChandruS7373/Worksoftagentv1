@@ -414,7 +414,7 @@ function showResolutionPopup(reason){
 
   const b2=document.createElement('button');
   b2.style.cssText=`padding:11px 22px;background:${stuck?'#e53935':'#f3f4f6'};color:${stuck?'#fff':'#374151'};border:${stuck?'none':'1px solid #e5e7eb'};border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;flex:1;`;
-  b2.textContent='🔺  No, Forward to L2';
+  b2.textContent='🔺  No, Forward to Support Engineers';
   b2.onclick=()=>{ resOverlay.style.display='none'; openEscalation(); };
 
   const b3=document.createElement('button'); b3.className='btn-gray';
