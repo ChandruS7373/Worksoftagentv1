@@ -18,10 +18,8 @@ Run:
 Requires a .env file (or environment variables) — see .env.example
 """
 
-import os, re, base64, io, json, uuid, hashlib, smtplib, logging, time
+import os, re, base64, io, json, uuid, hashlib, logging, time
 from datetime import datetime
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from html.parser import HTMLParser
 
 from flask import (
@@ -61,8 +59,10 @@ SF_CLIENT_SECRET  = _secret("SF_CLIENT_SECRET")
 SF_DOMAIN         = _secret("SF_DOMAIN", "login").strip().strip('"').strip("'")
 SF_INSTANCE_URL   = _secret("SF_INSTANCE_URL", "")
 IT_ADMIN_EMAIL    = _secret("IT_ADMIN_EMAIL", "it-admin@qualesce.com")
-OUTLOOK_EMAIL     = _secret("OUTLOOK_EMAIL")
-OUTLOOK_PASSWORD  = _secret("OUTLOOK_PASSWORD")
+OUTLOOK_EMAIL     = _secret("OUTLOOK_EMAIL")          # mailbox mail is sent FROM (via Graph)
+GRAPH_TENANT_ID     = _secret("GRAPH_TENANT_ID")
+GRAPH_CLIENT_ID     = _secret("GRAPH_CLIENT_ID")
+GRAPH_CLIENT_SECRET = _secret("GRAPH_CLIENT_SECRET")
 PORTAL_URL        = SF_INSTANCE_URL or f"https://{SF_DOMAIN}.salesforce.com"
 
 # ── Slack ─────────────────────────────────────────────────────────────────────
@@ -705,27 +705,63 @@ def _save_resolved_chat_to_sf(session_data, history):
 # ═══════════════════════════════════════════════════════════
 # EMAIL
 # ═══════════════════════════════════════════════════════════
-def _send_smtp(sender, password, to, subject, body, cc=""):
-    msg = MIMEMultipart("alternative")
-    msg["From"] = sender; msg["To"] = to; msg["Subject"] = subject
-    if cc: msg["CC"] = cc
-    msg.attach(MIMEText(body, "html"))
-    recipients = [to] + ([cc] if cc else [])
-    last_err = ""
-    for host, port in [("smtp.office365.com", 587), ("smtp.gmail.com", 587)]:
-        try:
-            with smtplib.SMTP(host, port, timeout=15) as srv:
-                srv.ehlo(); srv.starttls(); srv.login(sender, password)
-                srv.sendmail(sender, recipients, msg.as_string())
+# Render (and most PaaS hosts) block outbound SMTP (ports 25/465/587), so mail is
+# sent over HTTPS via Microsoft Graph instead of smtplib. Requires an Azure AD app
+# registration with the Mail.Send *application* permission (admin-consented).
+_graph_token_cache = {"token": None, "expires_at": 0}
+
+def _get_graph_token():
+    if _graph_token_cache["token"] and time.time() < _graph_token_cache["expires_at"] - 60:
+        return _graph_token_cache["token"]
+    import requests as _req
+    resp = _req.post(
+        f"https://login.microsoftonline.com/{GRAPH_TENANT_ID}/oauth2/v2.0/token",
+        data={
+            "client_id":     GRAPH_CLIENT_ID,
+            "client_secret": GRAPH_CLIENT_SECRET,
+            "scope":         "https://graph.microsoft.com/.default",
+            "grant_type":    "client_credentials",
+        },
+        timeout=15,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    _graph_token_cache["token"]      = data["access_token"]
+    _graph_token_cache["expires_at"] = time.time() + data.get("expires_in", 3600)
+    return _graph_token_cache["token"]
+
+def _send_graph_mail(sender, to, subject, body, cc=""):
+    import requests as _req
+    try:
+        token = _get_graph_token()
+    except Exception as exc:
+        return False, f"Graph auth failed: {exc}"
+
+    message = {
+        "message": {
+            "subject": subject,
+            "body": {"contentType": "HTML", "content": body},
+            "toRecipients": [{"emailAddress": {"address": to}}],
+            "ccRecipients":  [{"emailAddress": {"address": cc}}] if cc else [],
+        },
+        "saveToSentItems": "true",
+    }
+    try:
+        resp = _req.post(
+            f"https://graph.microsoft.com/v1.0/users/{sender}/sendMail",
+            headers={"Authorization": f"Bearer {token}"},
+            json=message, timeout=20,
+        )
+        if resp.status_code == 202:
             return True, ""
-        except Exception as exc:
-            last_err = str(exc)
-    return False, last_err
+        return False, f"Graph sendMail {resp.status_code}: {resp.text[:300]}"
+    except Exception as exc:
+        return False, str(exc)
 
 def send_escalation_email(ticket, user_name, user_email, issue, conversation, slack_url=""):
-    sender, password = OUTLOOK_EMAIL, OUTLOOK_PASSWORD
-    if not sender or not password:
-        return False, "SMTP credentials not configured"
+    sender = OUTLOOK_EMAIL
+    if not sender or not (GRAPH_TENANT_ID and GRAPH_CLIENT_ID and GRAPH_CLIENT_SECRET):
+        return False, "Microsoft Graph credentials not configured (GRAPH_TENANT_ID / GRAPH_CLIENT_ID / GRAPH_CLIENT_SECRET / OUTLOOK_EMAIL)"
 
     case_num = ticket.get("case_number", ticket.get("id", "N/A"))
     case_url = ticket.get("url", "#")
@@ -791,7 +827,7 @@ def send_escalation_email(ticket, user_name, user_email, issue, conversation, sl
   </p>
 </div>"""
 
-    return _send_smtp(sender, password, IT_ADMIN_EMAIL,
+    return _send_graph_mail(sender, IT_ADMIN_EMAIL,
                       f"[Worksoft Support] New Escalation – Case {case_num}",
                       html, cc=user_email)
 
@@ -1641,8 +1677,6 @@ def api_escalate():
 
         ticket.update({
             "sf_error":   sf_error,
-            "email_ok":   True,   # notifications sent async
-            "email_err":  "",
             "priority":   priority,
             "created_at": datetime.now().strftime("%d %b %Y, %H:%M"),
         })
@@ -1671,31 +1705,30 @@ def api_escalate():
         except Exception as exc:
             log.error(f"Slack exception: {exc}")
 
-        # ── Email: async so response is instant ──
-        _ticket_snap = dict(ticket)
-        _slack_snap  = slack_url
-        _sid_snap    = sid
-        def _email_async():
-            try:
-                email_ok, email_err = send_escalation_email(
-                    _ticket_snap, user_name, user_email, issue_text, convo, _slack_snap
-                )
-                log.info(f"Async email: {'sent' if email_ok else 'failed — ' + email_err}")
-                if email_ok and _sid_snap:
-                    with _get_db() as conn:
-                        conn.execute(
-                            "UPDATE tickets SET email_sent=1 WHERE session_id=? ORDER BY rowid DESC LIMIT 1",
-                            (_sid_snap,)
-                        )
-            except Exception as exc:
-                log.error(f"Async email exception: {exc}")
+        # ── Email: sync (Graph API call, typically <1s) so the result is real ──
+        email_ok, email_err = False, ""
+        try:
+            email_ok, email_err = send_escalation_email(
+                ticket, user_name, user_email, issue_text, convo, slack_url
+            )
+            log.info(f"Email: {'sent' if email_ok else 'failed — ' + email_err}")
+            if email_ok and sid:
+                with _get_db() as conn:
+                    conn.execute(
+                        "UPDATE tickets SET email_sent=1 WHERE session_id=? ORDER BY rowid DESC LIMIT 1",
+                        (sid,)
+                    )
+        except Exception as exc:
+            email_err = str(exc)
+            log.error(f"Email exception: {exc}")
 
-        threading.Thread(target=_email_async, daemon=True).start()
+        ticket["email_ok"]  = email_ok
+        ticket["email_err"] = email_err
 
         return jsonify({
             "ticket":    ticket,
-            "email_ok":  True,
-            "email_err": "",
+            "email_ok":  email_ok,
+            "email_err": email_err,
             "it_admin":  IT_ADMIN_EMAIL,
             "slack_ok":  bool(slack_url),
             "slack_err": "",
@@ -1809,7 +1842,7 @@ def api_status():
         "claude":            bool(ANTHROPIC_API_KEY),
         "openai":            bool(OPENAI_API_KEY),
         "sf":                bool(SF_CLIENT_ID and SF_USERNAME),
-        "email":             bool(OUTLOOK_EMAIL),
+        "email":             bool(OUTLOOK_EMAIL and GRAPH_TENANT_ID and GRAPH_CLIENT_ID and GRAPH_CLIENT_SECRET),
         "slack":             bool(SLACK_WEBHOOK_URL or SLACK_BOT_TOKEN),
         "confluence":        bool(CONFLUENCE_URL and CONFLUENCE_API_TOKEN),
         "db_cases":          _get_db().execute("SELECT COUNT(*) FROM sf_cases").fetchone()[0],
