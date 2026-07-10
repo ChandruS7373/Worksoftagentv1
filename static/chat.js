@@ -397,15 +397,15 @@ function showPostAnalyzePopup(){
 function showResolutionPopup(reason){
   const stuck = reason==='stuck';
   resIcon.textContent  = stuck ? '⚠️' : '🔍';
-  resTitle.textContent = stuck ? 'Looks like this needs L2 support' : 'Did this resolve your issue?';
+  resTitle.textContent = stuck ? 'Looks like this needs WorkSoft Support Engineers' : 'Did this resolve your issue?';
   resBody.textContent  = stuck
-    ? "We've tried several steps but the issue persists. Would you like to escalate to the L2 specialist team, or keep chatting?"
+    ? "We've tried several steps but the issue persists. Would you like to escalate to the Support Engineers, or keep chatting?"
     : 'Confirm below — or keep chatting if you still need help.';
 
   resBtns.innerHTML='';
 
   const b1=document.createElement('button'); b1.className='btn-purple';
-  b1.textContent='✅  Yes, Resolved at L1';
+  b1.textContent='✅  Yes, Resolved';
   b1.onclick=async()=>{
     resOverlay.style.display='none';
     await fetch('/api/resolve',{method:'POST'});
@@ -414,7 +414,7 @@ function showResolutionPopup(reason){
 
   const b2=document.createElement('button');
   b2.style.cssText=`padding:11px 22px;background:${stuck?'#e53935':'#f3f4f6'};color:${stuck?'#fff':'#374151'};border:${stuck?'none':'1px solid #e5e7eb'};border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;flex:1;`;
-  b2.textContent='🔺  No, Forward to L2';
+  b2.textContent='🔺  No, Forward to Support Engineers';
   b2.onclick=()=>{ resOverlay.style.display='none'; openEscalation(); };
 
   const b3=document.createElement('button'); b3.className='btn-gray';
