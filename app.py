@@ -724,7 +724,8 @@ def _get_graph_token():
         },
         timeout=15,
     )
-    resp.raise_for_status()
+    if resp.status_code != 200:
+        raise RuntimeError(f"{resp.status_code}: {resp.text[:500]}")
     data = resp.json()
     _graph_token_cache["token"]      = data["access_token"]
     _graph_token_cache["expires_at"] = time.time() + data.get("expires_in", 3600)
